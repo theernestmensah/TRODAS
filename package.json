@@ -1,0 +1,20 @@
+{
+  "name": "trodas-project-portal",
+  "private": true,
+  "description": "Trodas Technologies project portal: static front end, Clerk sign-in, Convex backend.",
+  "scripts": {
+    "convex": "convex dev",
+    "convex:deploy": "convex deploy",
+    "convex:import-projects": "node scripts/import-projects.mjs",
+    "convex:import-all": "node scripts/import-data.mjs",
+    "convex:grant": "node scripts/grant-access.mjs",
+    "check:integrations": "node scripts/check-integrations.mjs",
+    "typecheck": "tsc -p convex --noEmit"
+  },
+  "dependencies": {
+    "convex": "1.49.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.9.3"
+  }
+}

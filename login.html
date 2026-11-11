@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="theme-color" content="#101827">
+<title>Sign in — Trodas Technologies project portal</title>
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="stylesheet" href="fonts.css">
+<link rel="stylesheet" href="login.css">
+</head>
+<body>
+<div class="login-shell">
+  <aside class="login-rail" aria-label="Trodas Technologies project portal">
+    <span class="brand"><span class="brand-mark" aria-hidden="true"></span><span class="brand-name">TRODAS<small>TECHNOLOGIES</small></span></span>
+    <div class="rail-body">
+      <p class="rail-title">Project portal</p>
+      <p class="rail-lede">Track delivery, deadlines, and client updates across your workspace.</p>
+      <div class="today">
+        <div class="date-box" aria-hidden="true"><span id="todayDay"></span><small id="todayMonth"></small></div>
+        <div class="today-text"><strong id="todayLabel">Today</strong><span>Sign in to see what’s due.</span></div>
+      </div>
+      <p class="rail-note"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="m12 3 8 3v6c0 5-8 9-8 9s-8-4-8-9V6Z"/><path d="m8 12 3 3 5-6"/></svg>Clients see only the projects shared with them, read-only.</p>
+    </div>
+  </aside>
+
+  <main class="login-main" id="main">
+    <div class="sign-in-column">
+      <div id="signIn" class="sign-in-slot" aria-busy="true">
+        <div class="panel loading-panel" role="status">
+          <span class="loading-track" aria-hidden="true"><i></i></span>
+          <p>Loading secure sign-in…</p>
+        </div>
+      </div>
+
+      <section class="panel state-panel" id="setupPanel" hidden aria-labelledby="setupTitle">
+        <h1 id="setupTitle">Sign-in isn’t set up yet</h1>
+        <p id="setupMessage"></p>
+        <ol class="setup-steps">
+          <li>Copy the publishable key from Clerk → <strong>API keys</strong>.</li>
+          <li>Paste it into <code>config.js</code> as <code>clerkPublishableKey</code>.</li>
+          <li>Reload this page. Full steps are in <code>README.md</code>.</li>
+        </ol>
+      </section>
+
+      <section class="panel state-panel" id="errorPanel" hidden role="alert" aria-labelledby="errorTitle">
+        <h1 id="errorTitle">Couldn’t reach the sign-in service</h1>
+        <p>Check your connection and try again. If it keeps failing, confirm the publishable key in <code>config.js</code> belongs to an active Clerk application.</p>
+        <button class="primary" type="button" id="retrySignIn">Try again</button>
+      </section>
+
+      <p class="access-note">No account yet? Access is by invitation. Ask your Trodas project lead to invite you.</p>
+    </div>
+    <footer class="login-footer">Trodas Technologies</footer>
+  </main>
+</div>
+<script src="config.js"></script>
+<script src="auth.js"></script>
+<script src="login.js"></script>
+</body>
+</html>
