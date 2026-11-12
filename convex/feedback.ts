@@ -1,7 +1,7 @@
 import { ConvexError, v } from "convex/values";
 import { internalMutation, mutation, query } from "./_generated/server";
 import { feedbackStatus } from "./schema";
-import { cleanText, requireAccess, requireTeam } from "./access";
+import { audit, cleanText, projectAppId, requireAccess, requireAdmin, requireTeam, requireVisibleProject } from "./access";
 
 /**
  * Lists feedback. Team members see all feedback; clients only see feedback for their company.
@@ -10,7 +10,7 @@ export const list = query({
   args: {},
   handler: async (ctx) => {
     const viewer = await requireAccess(ctx);
-    if (viewer.role === "team") {
+    if (viewer.role !== "client") {
       return await ctx.db.query("feedback").order("desc").collect();
     }
     return await ctx.db
@@ -47,27 +47,25 @@ export const review = mutation({
 });
 
 /**
- * Submit client feedback.
+ * Share feedback on a project. Clients can comment only on their company's current
+ * projects; the author is always the signed-in person. `project` is the id the portal
+ * uses (see projectAppId).
  */
 export const create = mutation({
   args: {
-    author: v.optional(v.string()),
-    client: v.optional(v.string()),
-    projectLegacyId: v.optional(v.string()),
+    project: v.string(),
     text: v.string(),
   },
   handler: async (ctx, args) => {
     const viewer = await requireAccess(ctx);
-    const client = viewer.role === "client" ? viewer.client : cleanText(args.client ?? "", "client", 60);
-    const author = cleanText(args.author || viewer.name, "author", 60);
+    const project = await requireVisibleProject(ctx, viewer, args.project);
     const text = cleanText(args.text, "feedback message", 1000);
-    const now = new Date();
-    const dateStr = now.toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+    const dateStr = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "Africa/Accra" });
 
     const id = await ctx.db.insert("feedback", {
-      author,
-      client,
-      projectLegacyId: args.projectLegacyId,
+      author: viewer.name,
+      client: project.client,
+      projectLegacyId: projectAppId(project),
       text,
       date: dateStr,
       status: "Needs review",
@@ -75,14 +73,26 @@ export const create = mutation({
     });
 
     await ctx.db.insert("activity", {
-      actor: author,
-      action: "submitted new feedback.",
-      context: `${client} · ${dateStr}`,
-      client,
+      actor: viewer.name,
+      action: "shared feedback.",
+      context: `${project.name} · ${dateStr}`,
+      client: project.client,
       createdAt: Date.now(),
     });
 
     return id;
+  },
+});
+
+/** Delete a feedback item, for example sample data or something posted by mistake. Admins only. */
+export const remove = mutation({
+  args: { id: v.id("feedback") },
+  handler: async (ctx, { id }) => {
+    const admin = await requireAdmin(ctx);
+    const item = await ctx.db.get("feedback", id);
+    if (!item) return;
+    await ctx.db.delete("feedback", id);
+    await audit(ctx, admin, `deleted feedback from ${item.author} (${item.client}).`);
   },
 });
 

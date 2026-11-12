@@ -8,10 +8,20 @@ export const projectStatus = v.union(
   v.literal("Completed"),
 );
 
+// "admin": Trodas staff who also manage people, invites and client companies.
 // "team": Trodas staff, can see and edit every project.
 // "client": sees only projects whose `client` matches the user's `client`, read-only.
-// No role yet: signed in, but waiting for a team member to grant access.
-export const userRole = v.union(v.literal("team"), v.literal("client"));
+// No role yet: signed in, but waiting for an admin to grant access.
+export const userRole = v.union(v.literal("admin"), v.literal("team"), v.literal("client"));
+
+export const inviteStatus = v.union(v.literal("pending"), v.literal("accepted"), v.literal("revoked"));
+
+export const milestone = v.object({
+  title: v.string(),
+  start: v.string(),
+  end: v.string(),
+  done: v.boolean(),
+});
 
 export const feedbackStatus = v.union(
   v.literal("Needs review"),
@@ -46,6 +56,10 @@ export default defineSchema({
     legacyId: v.optional(v.string()),
     createdBy: v.optional(v.id("users")),
     updatedAt: v.number(),
+    // Archived projects leave everyone's lists; the team can still find and restore them.
+    archived: v.optional(v.boolean()),
+    // Delivery timeline: phases in order, each with its dates (YYYY-MM-DD) and whether it's finished.
+    milestones: v.optional(v.array(milestone)),
   })
     .index("by_legacy_id", ["legacyId"])
     .index("by_client", ["client"]),
@@ -81,10 +95,48 @@ export default defineSchema({
     client: v.string(),
     projectLegacyId: v.optional(v.string()),
     projectId: v.optional(v.id("projects")),
-    body: v.string(),
+    // A resource is either written text (body) or an uploaded file in Convex storage.
+    body: v.optional(v.string()),
+    fileId: v.optional(v.id("_storage")),
+    fileName: v.optional(v.string()),
+    fileType: v.optional(v.string()),
+    fileSize: v.optional(v.number()),
     legacyId: v.optional(v.string()),
     createdAt: v.number(),
   })
     .index("by_client", ["client"])
     .index("by_project_legacy", ["projectLegacyId"]),
+
+  // Client companies. Projects, client accounts and invites use `name`; `key` is the
+  // lower-cased name, so "acme corporation " and "Acme Corporation" are the same client.
+  clients: defineTable({
+    name: v.string(),
+    key: v.string(),
+    createdAt: v.number(),
+  }).index("by_key", ["key"]),
+
+  // Access decided before someone's first sign-in. users:store applies a pending invite
+  // to the account whose email matches, then marks it accepted.
+  invites: defineTable({
+    email: v.string(), // lower-cased
+    role: userRole,
+    client: v.optional(v.string()),
+    status: inviteStatus,
+    invitedBy: v.optional(v.id("users")), // empty when saved from the command line
+    invitedByName: v.string(),
+    emailSent: v.boolean(), // false when Convex has no Clerk secret key, or Clerk refused
+    clerkInvitationId: v.optional(v.string()),
+    createdAt: v.number(),
+    acceptedAt: v.optional(v.number()),
+  })
+    .index("by_email", ["email"])
+    .index("by_status", ["status"]),
+
+  // Who changed access, invites and client companies. Admins only; never shown to clients.
+  auditLog: defineTable({
+    actorName: v.string(),
+    actorId: v.optional(v.id("users")),
+    action: v.string(),
+    createdAt: v.number(),
+  }).index("by_created_at", ["createdAt"]),
 });

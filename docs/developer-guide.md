@@ -52,7 +52,7 @@ The browser never decides what someone may see. Every Convex function checks who
 |---|---|---|
 | Clerk app **TRODAS** | `finer-peacock-8466.clerk.accounts.dev` (development instance) | Not created yet |
 | Convex project **trodas-portal** (team `nsaa-tickets`) | `clear-bandicoot-574` | `zealous-herring-182`: exists, not configured |
-| `config.js` points to | Development | |
+| `config.js` points to | Development, on this computer and on hosted sites (Vercel) | Not used until it has a `pk_live_…` key |
 | Convex environment variables | `CLERK_ISSUER_URL`, `CLERK_SECRET_KEY` (invites are emailed) | None yet |
 
 The development Convex deployment holds the live data in use today. Clerk development instances have usage limits and show a “Development mode” label, so move to production before real clients rely on the portal.
@@ -166,7 +166,7 @@ See [`check:integrations`](#checkintegrations) for what it checks. Then open the
 
 ### `config.js` (loaded by the browser, so public)
 
-`config.js` has a `development` block and a `production` block. The portal picks one from the address it’s opened at: `localhost` or `127.0.0.1` uses development; any other address uses production. The same files therefore work locally and on the hosted site.
+`config.js` has a `development` block and a `production` block. On this computer (`localhost`, `127.0.0.1`) the portal always uses development. On a hosted site (Vercel, your own domain) it uses production once the production block has a Clerk key; until then it uses development too. So while you stay in development mode, the Vercel site and your computer share the same Clerk app, Convex deployment and data.
 
 | Key | Value | Notes |
 |---|---|---|
@@ -293,6 +293,7 @@ Run from the project folder. Add `-- --prod` to use the production deployment.
 |---|---|
 | `npm run convex` | `convex dev`: watch `convex/` and deploy changes to your dev deployment |
 | `npm run convex:deploy` | Deploy `convex/` to production |
+| `npm run build` | Build the public website into `public/` (only the portal’s pages and files) |
 | `npm run typecheck` | Type-check `convex/` |
 | `npm test` | Run the automated tests (`tests/`) in memory; touches no deployment |
 | `npm run convex:import-all` / `npm run convex:samples` | Load the sample projects (with timelines), feedback, documents and activity |
@@ -349,14 +350,14 @@ npx convex dev --once
    npx convex env set CLERK_SECRET_KEY sk_live_your_key --prod
    npm run convex:deploy
    ```
-3. **`config.js`:** put the `pk_live_…` key in the `production` block. Its `convexUrl` is already `https://zealous-herring-182.convex.cloud`. The development block stays as it is; the portal picks the block by address.
+3. **`config.js`:** put the `pk_live_…` key in the `production` block. Its `convexUrl` is already `https://zealous-herring-182.convex.cloud`. From then on, hosted sites use production and your computer keeps using development.
 4. **Data and the first admin:**
    ```powershell
    npm run convex:import-all -- --prod
    npm run convex:grant -- you@yourcompany.com admin --prod
    ```
    Sign in to the production portal once before running the grant.
-5. **Host the front end** on any static host (Cloudflare Pages, Netlify, an IIS or nginx site). Publish only the front-end files: `index.html`, `login.html`, `app.js`, `auth.js`, `session.js`, `login.js`, `config.js`, `styles.css`, `login.css`, `fonts.css`, `favicon.svg` and `assets/`. Don’t publish `node_modules`, `convex`, `data`, `scripts`, `.env.local` or `package*.json`.
+5. **Host the front end.** On **Vercel**, deploy this folder as it is: `vercel.json` runs `npm run build`, which copies only the portal’s pages and files into `public/`, and Vercel serves only `public/`. The backend code, scripts, tests, docs and data are never published (`.vercelignore` also keeps `.env.local` and other local files from being uploaded). On another static host, run `npm run build` and publish the `public/` folder.
 6. **In Clerk production,** add the portal’s domain and set **Configure → Paths** home URL to it.
 7. **Check:**
    ```powershell

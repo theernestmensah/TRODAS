@@ -1,0 +1,74 @@
+[
+  {
+    "id": "s1",
+    "name": "Courier app for Android and iOS",
+    "client": "Sankofa Delivery",
+    "status": "In progress",
+    "progress": 55,
+    "deadline": "2027-01-29",
+    "lead": "Kwame Asante",
+    "description": "Customer app to book and track parcel deliveries across Accra, with a rider app and mobile money payments.",
+    "symbol": "S",
+    "color": "sand"
+  },
+  {
+    "id": "s2",
+    "name": "Online ordering website",
+    "client": "Osu Bakery & Café",
+    "status": "In review",
+    "progress": 85,
+    "deadline": "2026-11-20",
+    "lead": "Efua Owusu",
+    "description": "Menu, online orders for pickup and delivery, and a simple screen to update the daily specials.",
+    "symbol": "O",
+    "color": "pink"
+  },
+  {
+    "id": "s3",
+    "name": "Container tracking dashboard",
+    "client": "Tema Harbour Logistics",
+    "status": "At risk",
+    "progress": 38,
+    "deadline": "2026-12-04",
+    "lead": "Yaw Darko",
+    "description": "Live container status for the operations desk, fed from the shipping lines’ daily data exports.",
+    "symbol": "T",
+    "color": "blue"
+  },
+  {
+    "id": "s4",
+    "name": "Patient booking system",
+    "client": "Ridge Dental Clinic",
+    "status": "In progress",
+    "progress": 22,
+    "deadline": "2027-02-26",
+    "lead": "Adwoa Boateng",
+    "description": "Online appointment booking with SMS reminders, and a daily schedule for the front desk.",
+    "symbol": "R",
+    "color": ""
+  },
+  {
+    "id": "s5",
+    "name": "Farmer payments with mobile money",
+    "client": "Volta Grains Co-operative",
+    "status": "Completed",
+    "progress": 100,
+    "deadline": "2026-10-30",
+    "lead": "Kwame Asante",
+    "description": "Pays member farmers by mobile money as soon as their grain is weighed at a collection point.",
+    "symbol": "V",
+    "color": "sand"
+  },
+  {
+    "id": "s6",
+    "name": "Stock and sales system",
+    "client": "Kumasi Hardware Centre",
+    "status": "In progress",
+    "progress": 64,
+    "deadline": "2026-12-11",
+    "lead": "Yaw Darko",
+    "description": "Point of sale and stock levels for two branches, with low-stock alerts and daily sales reports.",
+    "symbol": "K",
+    "color": ""
+  }
+]

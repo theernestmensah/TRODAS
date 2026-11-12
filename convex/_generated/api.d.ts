@@ -10,9 +10,13 @@
 
 import type * as access from "../access.js";
 import type * as activity from "../activity.js";
+import type * as audit from "../audit.js";
+import type * as clients from "../clients.js";
 import type * as feedback from "../feedback.js";
+import type * as invites from "../invites.js";
 import type * as projects from "../projects.js";
 import type * as resources from "../resources.js";
+import type * as samples from "../samples.js";
 import type * as users from "../users.js";
 
 import type {
@@ -24,9 +28,13 @@ import type {
 declare const fullApi: ApiFromModules<{
   access: typeof access;
   activity: typeof activity;
+  audit: typeof audit;
+  clients: typeof clients;
   feedback: typeof feedback;
+  invites: typeof invites;
   projects: typeof projects;
   resources: typeof resources;
+  samples: typeof samples;
   users: typeof users;
 }>;
 

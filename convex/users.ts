@@ -1,9 +1,10 @@
 import { ConvexError, v } from "convex/values";
-import { internalMutation, mutation, query } from "./_generated/server";
+import { internalMutation, mutation, query, type MutationCtx } from "./_generated/server";
 import type { Doc } from "./_generated/dataModel";
-import { cleanText, findViewer, requireTeam } from "./access";
+import { audit, cleanEmail, describeAccess, ensureClient, findViewer, requireAdmin, requireClient, requireTeam } from "./access";
 
-const accessChoice = v.union(v.literal("team"), v.literal("client"), v.literal("none"));
+export const accessChoice = v.union(v.literal("admin"), v.literal("team"), v.literal("client"), v.literal("none"));
+export type AccessChoice = "admin" | "team" | "client" | "none";
 
 /** What the portal is allowed to know about a person (never the token identifier). */
 function publicProfile(user: Doc<"users">) {
@@ -18,18 +19,27 @@ function publicProfile(user: Doc<"users">) {
   };
 }
 
-function accessFields(role: "team" | "client" | "none", client: string | undefined) {
+/**
+ * The fields to store for an access choice. Clients must be on the client list
+ * (the command line may add a missing one). Patching a field to undefined removes it.
+ */
+export async function accessFields(ctx: MutationCtx, role: AccessChoice, client: string | undefined, addMissingClient = false) {
   if (role === "client") {
-    return { role, client: cleanText(client ?? "", "client company", 60) } as const;
+    const name = addMissingClient ? (await ensureClient(ctx, client ?? "")).name : await requireClient(ctx, client ?? "");
+    return { role, client: name } as const;
   }
-  // Patching a field to undefined removes it.
   return { role: role === "none" ? undefined : role, client: undefined };
+}
+
+async function adminCount(ctx: MutationCtx) {
+  const users = await ctx.db.query("users").collect();
+  return users.filter((u) => u.role === "admin").length;
 }
 
 /**
  * Called by the portal right after Convex accepts the Clerk token.
  * Creates the user's row on first sign-in and refreshes their profile after that.
- * Never touches role or client: only team members grant access.
+ * If they have no access yet and an admin invited their email, the invite's access applies.
  */
 export const store = mutation({
   args: {},
@@ -46,16 +56,31 @@ export const store = mutation({
       lastSignedInAt: Date.now(),
     };
 
-    const existing = await findViewer(ctx);
-    if (existing) {
-      await ctx.db.patch("users", existing._id, profile);
-      return existing._id;
+    let user = await findViewer(ctx);
+    if (user) {
+      await ctx.db.patch("users", user._id, profile);
+    } else {
+      const id = await ctx.db.insert("users", { tokenIdentifier: identity.tokenIdentifier, ...profile });
+      user = (await ctx.db.get("users", id))!;
     }
 
-    return await ctx.db.insert("users", {
-      tokenIdentifier: identity.tokenIdentifier,
-      ...profile,
-    });
+    // Clerk only lets a verified address be someone's primary email, and invite-only
+    // accounts are created from the invitation email, so this matches the invited person.
+    if (!user.role && identity.email) {
+      const invite = await ctx.db
+        .query("invites")
+        .withIndex("by_email", (q) => q.eq("email", identity.email!.trim().toLowerCase()))
+        .filter((q) => q.eq(q.field("status"), "pending"))
+        .first();
+      if (invite) {
+        const fields = invite.role === "client" ? { role: invite.role, client: invite.client } : { role: invite.role, client: undefined };
+        await ctx.db.patch("users", user._id, fields);
+        await ctx.db.patch("invites", invite._id, { status: "accepted", acceptedAt: Date.now() });
+        const whose = invite.invitedBy ? `${invite.invitedByName}’s invitation` : "a pre-approved invitation";
+        await audit(ctx, user, `accepted ${whose} and got ${describeAccess(invite.role, invite.client)}.`);
+      }
+    }
+    return user._id;
   },
 });
 
@@ -68,11 +93,11 @@ export const current = query({
   },
 });
 
-/** Everyone who has signed in, for the People & access page. Team only. */
+/** Everyone who has signed in, for the Admin page. Admins only. */
 export const list = query({
   args: {},
   handler: async (ctx) => {
-    await requireTeam(ctx);
+    await requireAdmin(ctx);
     const users = await ctx.db.query("users").collect();
     return users
       .map(publicProfile)
@@ -80,7 +105,20 @@ export const list = query({
   },
 });
 
-/** Grant or change someone's access. Team only, and never your own. */
+/** Trodas staff (admins and team), for project leads and the Team page. Staff only. */
+export const staff = query({
+  args: {},
+  handler: async (ctx) => {
+    await requireTeam(ctx);
+    const users = await ctx.db.query("users").collect();
+    return users
+      .filter((u) => u.role === "admin" || u.role === "team")
+      .map((u) => ({ _id: u._id, name: u.name, email: u.email ?? null, imageUrl: u.imageUrl ?? null, role: u.role! }))
+      .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
+  },
+});
+
+/** Grant or change someone's access. Admins only, and never your own. */
 export const setAccess = mutation({
   args: {
     userId: v.id("users"),
@@ -88,20 +126,27 @@ export const setAccess = mutation({
     client: v.optional(v.string()),
   },
   handler: async (ctx, { userId, role, client }) => {
-    const me = await requireTeam(ctx);
+    const me = await requireAdmin(ctx);
     if (me._id === userId) {
-      throw new ConvexError("You can’t change your own access. Ask another team member.");
+      throw new ConvexError("You can’t change your own access. Ask another admin.");
     }
     const target = await ctx.db.get("users", userId);
     if (!target) throw new ConvexError("That person’s account no longer exists.");
-    await ctx.db.patch("users", userId, accessFields(role, client));
+    const fields = await accessFields(ctx, role, client);
+    if (target.role === fields.role && (target.client ?? undefined) === fields.client) return;
+    if (target.role === "admin" && fields.role !== "admin" && (await adminCount(ctx)) <= 1) {
+      throw new ConvexError("The portal needs at least one admin.");
+    }
+    await ctx.db.patch("users", userId, fields);
+    await audit(ctx, me, `changed ${target.name}’s access from ${describeAccess(target.role, target.client)} to ${describeAccess(fields.role, fields.client)}.`);
   },
 });
 
 /**
- * Bootstrap and recovery from the command line (admin access), for when no team member
- * can sign in to grant access yet: `npm run convex:grant -- you@company.com team`.
- * The person must have signed in to the portal once so their row exists.
+ * Bootstrap and recovery from the command line (admin access), for when no admin
+ * can sign in to grant access: `npm run convex:grant -- you@company.com admin`.
+ * For someone who hasn't signed in yet, it saves the access as a pending invite that
+ * applies at their first sign-in. It sends no email: invite them in Clerk if needed.
  */
 export const grantAccess = internalMutation({
   args: {
@@ -110,18 +155,34 @@ export const grantAccess = internalMutation({
     client: v.optional(v.string()),
   },
   handler: async (ctx, { email, role, client }) => {
-    const wanted = email.trim().toLowerCase();
+    const wanted = cleanEmail(email);
     const users = await ctx.db.query("users").collect();
     const matches = users.filter((u) => u.email?.toLowerCase() === wanted);
     if (matches.length === 0) {
-      const known = users.map((u) => u.email).filter(Boolean).join(", ") || "none";
-      throw new ConvexError(
-        `No one with ${email} has signed in yet. Sign in to the portal once, then run this again. ` +
-          `Emails on file: ${known}.`,
-      );
+      const pending = await ctx.db
+        .query("invites")
+        .withIndex("by_email", (q) => q.eq("email", wanted))
+        .filter((q) => q.eq(q.field("status"), "pending"))
+        .first();
+      if (role === "none") {
+        if (pending) {
+          await ctx.db.patch("invites", pending._id, { status: "revoked" });
+          await audit(ctx, "Command line", `cancelled the invitation for ${wanted}.`);
+        }
+        return { updated: 0, preApproved: false, role: "none", client: null };
+      }
+      const fields = await accessFields(ctx, role, client, true);
+      const invite = { role: fields.role!, client: fields.client, invitedBy: undefined, invitedByName: "Command line", emailSent: false, createdAt: Date.now() };
+      if (pending) await ctx.db.patch("invites", pending._id, invite);
+      else await ctx.db.insert("invites", { email: wanted, status: "pending", ...invite });
+      await audit(ctx, "Command line", `pre-approved ${wanted} with ${describeAccess(fields.role, fields.client)}; it applies at their first sign-in.`);
+      return { updated: 0, preApproved: true, role: fields.role!, client: fields.client ?? null };
     }
-    const fields = accessFields(role, client);
-    for (const user of matches) await ctx.db.patch("users", user._id, fields);
+    const fields = await accessFields(ctx, role, client, true);
+    for (const user of matches) {
+      await ctx.db.patch("users", user._id, fields);
+      await audit(ctx, "Command line", `set ${user.name}’s access to ${describeAccess(fields.role, fields.client)}.`);
+    }
     return { updated: matches.length, role: fields.role ?? "none", client: fields.client ?? null };
   },
 });

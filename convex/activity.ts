@@ -12,7 +12,7 @@ export const list = query({
   handler: async (ctx, { limit = 30 }) => {
     const viewer = await requireAccess(ctx);
     limit = Math.min(Math.max(Math.floor(limit), 1), 100);
-    if (viewer.role === "team") {
+    if (viewer.role !== "client") {
       return await ctx.db.query("activity").order("desc").take(limit);
     }
     return await ctx.db
