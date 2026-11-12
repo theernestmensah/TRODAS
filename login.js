@@ -33,17 +33,37 @@
   TrodasAuth.loadClerk()
     .then(clerk => {
       const target = TrodasAuth.redirectTarget();
+      // Invitation links (sent from the Admin page) land here with Clerk's ticket in the URL.
+      // A new person gets the sign-up form; the ticket fixes their email to the invited one.
+      const params = new URLSearchParams(window.location.search);
+      const invitation = params.has('__clerk_ticket') && params.get('__clerk_status') === 'sign_up';
+      if (clerk.user && invitation) {
+        // Someone else is signed in on this browser: offer to sign out and accept, instead of
+        // silently opening the portal as them.
+        const who = clerk.user.primaryEmailAddress?.emailAddress || TrodasAuth.displayName(clerk.user);
+        slot.hidden = true;
+        $('inviteMessage').textContent = `This browser is signed in as ${who}, but the invitation is for a new account. Sign out to accept it, or carry on as ${who}.`;
+        $('continuePortal').href = target;
+        $('acceptInvite').addEventListener('click', () => clerk.signOut({ redirectUrl: window.location.href }));
+        $('invitePanel').hidden = false;
+        return;
+      }
       if (clerk.user) {
         window.location.replace(target);
         return;
       }
       slot.replaceChildren();
-      clerk.mountSignIn(slot, {
-        forceRedirectUrl: target,
-        withSignUp: false,
-        // Invite-only: hide "Don't have an account? Sign up". Clerk's Restricted sign-up mode enforces it.
-        appearance: { elements: { footerAction: { display: 'none' } } }
-      });
+      const hideFooter = { elements: { footerAction: { display: 'none' } } };
+      if (invitation) {
+        clerk.mountSignUp(slot, { forceRedirectUrl: target, appearance: hideFooter });
+      } else {
+        clerk.mountSignIn(slot, {
+          forceRedirectUrl: target,
+          withSignUp: false,
+          // Invite-only: hide "Don't have an account? Sign up". Clerk's invite-only mode enforces it.
+          appearance: hideFooter
+        });
+      }
       slot.setAttribute('aria-busy', 'false');
       slot.classList.add('is-ready');
     })

@@ -43,13 +43,22 @@
         </ol>
       </section>
 
+      <section class="panel state-panel" id="invitePanel" hidden aria-labelledby="inviteTitle">
+        <h1 id="inviteTitle">You’re already signed in</h1>
+        <p id="inviteMessage"></p>
+        <div class="state-actions">
+          <button class="primary" type="button" id="acceptInvite">Sign out and accept</button>
+          <a class="text-link" id="continuePortal" href="index.html">Continue to the portal</a>
+        </div>
+      </section>
+
       <section class="panel state-panel" id="errorPanel" hidden role="alert" aria-labelledby="errorTitle">
         <h1 id="errorTitle">Couldn’t reach the sign-in service</h1>
         <p>Check your connection and try again. If it keeps failing, confirm the publishable key in <code>config.js</code> belongs to an active Clerk application.</p>
         <button class="primary" type="button" id="retrySignIn">Try again</button>
       </section>
 
-      <p class="access-note">No account yet? Access is by invitation. Ask your Trodas project lead to invite you.</p>
+      <p class="access-note">No account yet? Access is by invitation. Ask a Trodas admin to invite you.</p>
     </div>
     <footer class="login-footer">Trodas Technologies</footer>
   </main>

@@ -48,9 +48,12 @@ async function fetchJson(url, tries = 3) {
 const trimSlash = url => String(url || '').trim().replace(/\/+$/, '');
 
 // ── 1. Portal settings ────────────────────────────────────────────────────────
-section('Portal settings (config.js)');
-const configText = readFileSync(root + 'config.js', 'utf8');
+// config.js holds a block per environment (development / production); older versions had one set.
+const envName = prod ? 'production' : 'development';
+const configFile = readFileSync(root + 'config.js', 'utf8');
+const configText = (new RegExp(`${envName}\\s*:\\s*\\{([^}]*)\\}`).exec(configFile) || [])[1] ?? configFile;
 const configValue = name => (new RegExp(`${name}\\s*:\\s*['"]([^'"]*)['"]`).exec(configText) || [])[1] || '';
+section(`Portal settings (config.js → ${envName})`);
 const publishableKey = configValue('clerkPublishableKey');
 const convexUrl = trimSlash(configValue('convexUrl'));
 
@@ -84,12 +87,12 @@ const authConfig = readFileSync(root + 'convex/auth.config.ts', 'utf8');
 if (/applicationID:\s*["']convex["']/.test(authConfig)) pass('convex/auth.config.ts expects tokens for "convex"');
 else fail('convex/auth.config.ts doesn’t set applicationID: "convex".', 'Clerk’s Convex integration issues tokens with aud "convex".');
 
-const issuerVar = convexCli(['env', 'get', 'CLERK_JWT_ISSUER_DOMAIN']);
+const issuerVar = convexCli(['env', 'get', 'CLERK_ISSUER_URL']);
 const issuer = trimSlash(issuerVar.out.split(/\r?\n/).pop());
 if (!issuerVar.ok || !issuer || /not set|not found/i.test(issuerVar.out + issuerVar.err)) {
-  fail('CLERK_JWT_ISSUER_DOMAIN isn’t set on the Convex deployment.', `npx convex env set CLERK_JWT_ISSUER_DOMAIN https://${clerkHost ?? 'your-app.clerk.accounts.dev'}${prod ? ' --prod' : ''}`);
+  fail('CLERK_ISSUER_URL isn’t set on the Convex deployment.', `npx convex env set CLERK_ISSUER_URL https://${clerkHost ?? 'your-app.clerk.accounts.dev'}${prod ? ' --prod' : ''}`);
 } else if (clerkHost && issuer !== `https://${clerkHost}`) {
-  fail(`Convex trusts ${issuer}, but the portal signs in with https://${clerkHost}.`, `npx convex env set CLERK_JWT_ISSUER_DOMAIN https://${clerkHost}${prod ? ' --prod' : ''}`);
+  fail(`Convex trusts ${issuer}, but the portal signs in with https://${clerkHost}.`, `npx convex env set CLERK_ISSUER_URL https://${clerkHost}${prod ? ' --prod' : ''}`);
 } else {
   pass(`Convex trusts tokens from ${issuer}`);
 }
@@ -117,6 +120,47 @@ if (clerkHost) {
   }
 } else {
   warn('Skipped: no valid Clerk key in config.js.');
+}
+
+// ── 3b. Admin page: invites and admins ────────────────────────────────────────
+section('Admin page');
+const secretVar = convexCli(['env', 'get', 'CLERK_SECRET_KEY']);
+const secret = secretVar.ok ? secretVar.out.split(/\r?\n/).pop().trim() : '';
+if (!secret.startsWith('sk_')) {
+  warn('CLERK_SECRET_KEY isn’t set, so invites from the Admin page are saved but not emailed.', `Copy the secret key from Clerk → Configure → API keys, then: npx convex env set CLERK_SECRET_KEY <key>${prod ? ' --prod' : ''}`);
+} else if (clerkHost) {
+  const apiVar = convexCli(['env', 'get', 'CLERK_API_URL']);
+  const api = apiVar.ok && /^https?:\/\//.test(apiVar.out.split(/\r?\n/).pop()) ? trimSlash(apiVar.out.split(/\r?\n/).pop()) : '';
+  if (api) warn(`CLERK_API_URL is set to ${api}, so invites go there instead of Clerk.`, `npx convex env remove CLERK_API_URL${prod ? ' --prod' : ''}`);
+  try {
+    // The secret key's instance must be the one the portal signs in with: compare signing key ids.
+    const res = await fetch('https://api.clerk.com/v1/jwks', { headers: { Authorization: `Bearer ${secret}` } });
+    if (res.status === 401 || res.status === 403) fail('Clerk rejected CLERK_SECRET_KEY.', 'Copy a current secret key from Clerk → Configure → API keys.');
+    else if (!res.ok) warn(`Couldn’t check CLERK_SECRET_KEY with Clerk (HTTP ${res.status}).`);
+    else {
+      const privateKids = new Set(((await res.json()).keys || []).map(k => k.kid));
+      const publicKids = ((await fetchJson(`https://${clerkHost}/.well-known/jwks.json`)).keys || []).map(k => k.kid);
+      if (publicKids.some(kid => privateKids.has(kid))) pass('CLERK_SECRET_KEY belongs to the same Clerk app, so invites can be emailed');
+      else fail('CLERK_SECRET_KEY belongs to a different Clerk app than config.js.', 'Use the secret key from the same Clerk app as the publishable key.');
+    }
+  } catch (error) {
+    warn(`Couldn’t check CLERK_SECRET_KEY with Clerk (${error.message}).`);
+  }
+}
+const usersDump = convexCli(['data', 'users', '--format', 'jsonLines', '--limit', '1000']);
+if (usersDump.ok) {
+  const roles = usersDump.out.split(/\r?\n/).filter(l => l.trim().startsWith('{')).map(l => { try { return JSON.parse(l).role; } catch { return null; } });
+  const admins = roles.filter(r => r === 'admin').length;
+  // Admins pre-approved but not signed in yet (invites with role admin, still pending).
+  const invitesDump = convexCli(['data', 'invites', '--format', 'jsonLines', '--limit', '1000']);
+  const pendingAdmins = invitesDump.ok
+    ? invitesDump.out.split(/\r?\n/).filter(l => l.trim().startsWith('{')).map(l => { try { return JSON.parse(l); } catch { return {}; } }).filter(i => i.status === 'pending' && i.role === 'admin').length
+    : 0;
+  if (admins) pass(`${admins} admin${admins === 1 ? '' : 's'} can manage people`);
+  else if (pendingAdmins) warn(`No one is an admin yet; ${pendingAdmins} pre-approved admin${pendingAdmins === 1 ? '' : 's'} will become admin at first sign-in.`, 'Until then nobody can use the Admin page. To make someone admin now: npm run convex:grant -- you@company.com admin');
+  else warn(roles.length ? 'No one is an admin, so no one can manage people in the portal.' : 'No one has signed in yet.', 'Sign in once, then: npm run convex:grant -- you@company.com admin');
+} else {
+  warn('Couldn’t count admins.');
 }
 
 // ── 4. Deployed functions match the code in convex/ ───────────────────────────
@@ -163,7 +207,7 @@ if (convexUrl) {
 }
 if (reachable) {
   const anonymous = new ConvexHttpClient(convexUrl);
-  for (const fn of ['projects:list', 'feedback:list', 'resources:list', 'activity:list', 'users:list']) {
+  for (const fn of ['projects:list', 'feedback:list', 'resources:list', 'activity:list', 'users:list', 'clients:list', 'invites:list', 'audit:list']) {
     if (deployed && !deployed.has(fn)) continue;
     try {
       await anonymous.query(fn, {});

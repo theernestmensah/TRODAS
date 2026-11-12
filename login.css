@@ -69,3 +69,4 @@ code{font:500 12.5px/1.4 ui-monospace,SFMono-Regular,Consolas,monospace;backgrou
 @media(prefers-reduced-motion:reduce){
   *,*::before,*::after{animation:none!important;transition:none!important}
 }
+.state-actions{display:flex;flex-wrap:wrap;align-items:center;gap:14px}.text-link{color:var(--blue);font-size:13px;font-weight:650}.text-link:hover{text-decoration:underline}

@@ -80,6 +80,13 @@
         title: 'Sign in to the project portal',
         subtitle: 'Use the email address your invitation was sent to.'
       }
+    },
+    // Shown when someone opens their invitation link (login.js mounts sign-up for it).
+    signUp: {
+      start: {
+        title: 'Accept your invitation',
+        subtitle: 'Set up your sign-in for the Trodas project portal.'
+      }
     }
   };
 
